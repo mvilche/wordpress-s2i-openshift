@@ -113,6 +113,9 @@
            * @link https://wordpress.org/support/article/debugging-in-wordpress/
            */
           define( 'WP_DEBUG', false );
+
+          define("WPLANG", "es_ES");
+          define('FS_METHOD', 'direct');
           
           /* That's all, stop editing! Happy publishing. */
           
@@ -209,7 +212,10 @@
                     subPath: wp-config.php
                   - mountPath: /etc/php7/conf.d/99-custom_overrides.ini
                     name: ${APP_NAME}-php
-                    subPath: 99-custom_overrides.ini        
+                    subPath: 99-custom_overrides.ini
+                  - mountPath: /var/www/html/wp-content/plugins
+                    subPath: plugins
+                    name: wordpress-data                    
             dnsPolicy: ClusterFirst
             restartPolicy: Always
             schedulerName: default-scheduler
@@ -228,7 +234,10 @@
                   items:
                     - key: wp-config.php
                       path: wp-config.php               
-                name: ${APP_NAME}-config                              
+                name: ${APP_NAME}-config
+              - name: wordpress-data
+                persistentVolumeClaim:
+                  claimName: wordpress-data                                            
         test: false
         triggers:
           - type: ConfigChange
@@ -269,6 +278,7 @@
         source:
           git:
             uri: ${APP_REPO}
+            ref: ${APP_BRANCH}
           type: Git
         strategy:
           sourceStrategy:
