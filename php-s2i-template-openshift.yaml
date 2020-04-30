@@ -1,0 +1,405 @@
+      ##comienzo Template
+    apiVersion: v1
+    kind: Template
+    metadata:
+      name: wordpress-openshift-s2i
+      labels:
+        template: wordpress-openshift-s2i
+        autor: "Martin_Fabrizzio_Vilche"
+      annotations:
+        openshift.io/display-name: "php-openshift-s2i-mvilche"
+        iconClass: "icon-github"
+        description: >-
+          Php Application S2i Images
+          Martin Fabrizzio Vilche.
+          https://github.com/mvilche.
+
+    objects:
+
+    - apiVersion: v1
+      data:
+        99-custom_overrides.ini: |-
+          display_errors = Off
+          display_startup_errors = Off
+          error_reporting = E_ERROR | E_WARNING | E_PARSE | E_CORE_ERROR | E_CORE_WARNING | E_COMPILE_ERROR | E_COMPILE_WARNING | E_RECOVERABLE_ERROR
+          log_errors = On
+          upload_max_filesize = 8M
+          post_max_size = 32M
+          curl.cainfo="/etc/apache2/ca/cacert.pem"
+          openssl.cafile="/etc/apache2/ca/cacert.pem"
+          error_log = /dev/stderr
+          log_errors_max_len = 1024
+          ignore_repeated_errors = On
+          ignore_repeated_source = Off
+          html_errors = Off
+        wp-config.php: |-
+          <?php
+          /**
+           * The base configuration for WordPress
+           *
+           * The wp-config.php creation script uses this file during the
+           * installation. You don't have to use the web site, you can
+           * copy this file to "wp-config.php" and fill in the values.
+           *
+           * This file contains the following configurations:
+           *
+           * * MySQL settings
+           * * Secret keys
+           * * Database table prefix
+           * * ABSPATH
+           *
+           * @link https://wordpress.org/support/article/editing-wp-config-php/
+           *
+           * @package WordPress
+           */
+          
+          // ** MySQL settings - You can get this info from your web host ** //
+          /** The name of the database for WordPress */
+          define( 'DB_NAME', 'database_name_here' );
+          
+          /** MySQL database username */
+          define( 'DB_USER', 'username_here' );
+          
+          /** MySQL database password */
+          define( 'DB_PASSWORD', 'password_here' );
+          
+          /** MySQL hostname */
+          define( 'DB_HOST', 'localhost' );
+          
+          /** Database Charset to use in creating database tables. */
+          define( 'DB_CHARSET', 'utf8' );
+          
+          /** The Database Collate type. Don't change this if in doubt. */
+          define( 'DB_COLLATE', '' );
+          
+          /**#@+
+           * Authentication Unique Keys and Salts.
+           *
+           * Change these to different unique phrases!
+           * You can generate these using the {@link https://api.wordpress.org/secret-key/1.1/salt/ WordPress.org secret-key service}
+           * You can change these at any point in time to invalidate all existing cookies. This will force all users to have to log in again.
+           *
+           * @since 2.6.0
+           */
+          define( 'AUTH_KEY',         'put your unique phrase here' );
+          define( 'SECURE_AUTH_KEY',  'put your unique phrase here' );
+          define( 'LOGGED_IN_KEY',    'put your unique phrase here' );
+          define( 'NONCE_KEY',        'put your unique phrase here' );
+          define( 'AUTH_SALT',        'put your unique phrase here' );
+          define( 'SECURE_AUTH_SALT', 'put your unique phrase here' );
+          define( 'LOGGED_IN_SALT',   'put your unique phrase here' );
+          define( 'NONCE_SALT',       'put your unique phrase here' );
+          
+          /**#@-*/
+          
+          /**
+           * WordPress Database Table prefix.
+           *
+           * You can have multiple installations in one database if you give each
+           * a unique prefix. Only numbers, letters, and underscores please!
+           */
+          $table_prefix = 'wp_';
+          
+          /**
+           * For developers: WordPress debugging mode.
+           *
+           * Change this to true to enable the display of notices during development.
+           * It is strongly recommended that plugin and theme developers use WP_DEBUG
+           * in their development environments.
+           *
+           * For information on other constants that can be used for debugging,
+           * visit the documentation.
+           *
+           * @link https://wordpress.org/support/article/debugging-in-wordpress/
+           */
+          define( 'WP_DEBUG', false );
+          
+          /* That's all, stop editing! Happy publishing. */
+          
+          /** Absolute path to the WordPress directory. */
+          if ( ! defined( 'ABSPATH' ) ) {
+            define( 'ABSPATH', __DIR__ . '/' );
+          }
+          
+          /** Sets up WordPress vars and included files. */
+          require_once ABSPATH . 'wp-settings.php';
+      kind: ConfigMap
+      metadata:
+        name: ${APP_NAME}      
+
+
+    - apiVersion: v1
+      kind: DeploymentConfig
+      metadata:
+        labels:
+          app: ${APP_NAME}-s2i
+        name: ${APP_NAME}
+      spec:
+        replicas: 1
+        revisionHistoryLimit: 10
+        selector:
+          app: ${APP_NAME}-s2i
+          deploymentconfig: ${APP_NAME}
+        strategy:
+          activeDeadlineSeconds: 21600
+          resources:
+            requests:          
+              cpu: 100m
+              memory: 256Mi          
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          rollingParams:
+            intervalSeconds: 1
+            maxSurge: 25%
+            maxUnavailable: 25%
+            timeoutSeconds: 600
+            updatePeriodSeconds: 1
+          type: Rolling
+        template:
+          metadata:
+            labels:
+              app: ${APP_NAME}-s2i
+              deploymentconfig: ${APP_NAME}
+          spec:
+            containers:
+              - env:
+                  - name: WAITFOR_HOST
+                    value:
+                  - name: WAITFOR_PORT
+                    value:
+                  - name: TIMEZONE
+                    value: America/Montevideo
+                image: "${APP_NAME}:latest"
+                imagePullPolicy: Always
+                name: ${APP_NAME}
+                ports:
+                  - containerPort: 8080
+                    protocol: TCP
+                livenessProbe:
+                  failureThreshold: 5
+                  initialDelaySeconds: 10
+                  periodSeconds: 20
+                  successThreshold: 1
+                  httpGet:
+                    port: 8080
+                    path: /
+                  timeoutSeconds: 15
+                readinessProbe:
+                  failureThreshold: 5
+                  initialDelaySeconds: 10
+                  periodSeconds: 20
+                  successThreshold: 1
+                  httpGet:
+                    port: 8080
+                    path: /
+                  timeoutSeconds: 15
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 256Mi          
+                  limits:
+                    cpu: 500m
+                    memory: 512Mi
+                terminationMessagePath: /dev/termination-log
+                terminationMessagePolicy: File
+                volumeMounts:
+                  - mountPath: /var/www/html/wp-config.php
+                    name: ${APP_NAME}-config
+                    subPath: wp-config.php
+                  - mountPath: /etc/php7/conf.d/99-custom_overrides.ini
+                    name: ${APP_NAME}-php
+                    subPath: 99-custom_overrides.ini        
+            dnsPolicy: ClusterFirst
+            restartPolicy: Always
+            schedulerName: default-scheduler
+            terminationGracePeriodSeconds: 10
+            volumes:
+              - configMap:
+                  name: ${APP_NAME}
+                  defaultMode: 420
+                  items:
+                    - key: 99-custom_overrides.ini
+                      path: 99-custom_overrides.ini                
+                name: ${APP_NAME}-php
+              - configMap:
+                  name: ${APP_NAME}
+                  defaultMode: 420
+                  items:
+                    - key: wp-config.php
+                      path: wp-config.php               
+                name: ${APP_NAME}-config                              
+        test: false
+        triggers:
+          - type: ConfigChange
+          - imageChangeParams:
+              automatic: true
+              containerNames:
+                - ${APP_NAME}
+              from:
+                kind: ImageStreamTag
+                name: "${APP_NAME}:latest"
+            type: ImageChange
+
+
+
+    - apiVersion: v1
+      kind: BuildConfig
+      metadata:
+        labels:
+          app: ${APP_NAME}-s2i
+        name: ${APP_NAME}
+      spec:
+        completionDeadlineSeconds: 1800
+        failedBuildsHistoryLimit: 5
+        nodeSelector: null
+        output:
+          to:
+            kind: ImageStreamTag
+            name: ${APP_NAME}:latest
+        postCommit: {}
+        resources:
+          requests:          
+            cpu: 100m
+            memory: 100Mi          
+          limits:
+            cpu: 1024m
+            memory: 2048Mi
+        runPolicy: Serial
+        source:
+          git:
+            uri: ${APP_REPO}
+          type: Git
+        strategy:
+          sourceStrategy:
+            incremental: true
+            from:
+              kind: ImageStreamTag
+              name: wordpress-s2i-${IMAGE_SO}:latest
+          type: Source
+        successfulBuildsHistoryLimit: 5
+        triggers:
+          - type: ConfigChange
+          - imageChange:
+              from:
+                kind: "ImageStreamTag"
+                name: "wordpress-s2i-${IMAGE_SO}:latest"
+
+    - apiVersion: v1
+      kind: ImageStream
+      metadata:
+        labels:
+          app: ${APP_NAME}-s2i
+        name: ${APP_NAME}
+      spec: {}
+
+
+
+  #### fin builder
+
+    - apiVersion: v1
+      kind: Service
+      metadata:
+        labels:
+          app: ${APP_NAME}-s2i
+        name: ${APP_NAME}
+      spec:
+        ports:
+          - name: http
+            port: 8080
+            protocol: TCP
+            targetPort: 8080
+        selector:
+          app: ${APP_NAME}-s2i
+          deploymentconfig: ${APP_NAME}
+        sessionAffinity: None
+        type: ClusterIP
+
+    - apiVersion: route.openshift.io/v1
+      kind: Route
+      metadata:
+        labels:
+          app: ${APP_NAME}-s2i
+        name: ${APP_NAME}
+      spec:
+        host:
+        port:
+          targetPort: http
+        to:
+          kind: Service
+          name: ${APP_NAME}
+          weight: 100
+        wildcardPolicy: None
+
+
+
+    - apiVersion: v1
+      kind: BuildConfig
+      metadata:
+        labels:
+          app: ${APP_NAME}-s2i
+          build: wordpress-s2i-${IMAGE_SO}
+        name: wordpress-s2i-${IMAGE_SO}
+      spec:
+        failedBuildsHistoryLimit: 5
+        nodeSelector: null
+        output:
+          to:
+            kind: ImageStreamTag
+            name: 'wordpress-s2i-${IMAGE_SO}:latest'
+        postCommit: {}
+        resources:
+          requests:          
+            cpu: 100m
+            memory: 100Mi          
+          limits:
+            cpu: 500m
+            memory: 1024Mi
+        runPolicy: Serial
+        source:
+          contextDir: ${IMAGE_SO}
+          git:
+            ref: master
+            uri: 'https://github.com/mvilche/wordpress-s2i-openshift.git'
+          type: Git
+        strategy:
+          dockerStrategy:
+            dockerfilePath: Dockerfile
+          type: Docker
+        successfulBuildsHistoryLimit: 5
+        triggers:
+          - type: ConfigChange
+
+
+    - apiVersion: v1
+      kind: ImageStream
+      metadata:
+        labels:
+          app: ${APP_NAME}-s2i
+        name: wordpress-s2i-${IMAGE_SO}-${IMAGE_SO}
+      spec: {}
+
+
+  ########## FIN php
+
+
+    ################PARAMETROS
+    parameters:
+      - name: APP_NAME
+        displayName: Application Name
+        value: 'wordpress'
+        required: true
+      - name: APP_REPO
+        displayName: Wordpress repository
+        value: 'https://github.com/myuser/php-composer-sample-app.git'
+        required: true
+      - name: APP_BRANCH
+        displayName: Wordpress repository branch
+        value: '5.4.1'
+        required: true
+      - name: IMAGE_SO
+        displayName: Image name distibution (alpine or centos)
+        value: 'alpine'
+        required: true          
+    ###############
+
