@@ -376,7 +376,7 @@
       metadata:
         labels:
           app: ${APP_NAME}-s2i
-        name: wordpress-s2i-${IMAGE_SO}-${IMAGE_SO}
+        name: wordpress-s2i-${IMAGE_SO}
       spec: {}
 
 
