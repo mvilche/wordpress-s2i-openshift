@@ -55,16 +55,16 @@
           
           // ** MySQL settings - You can get this info from your web host ** //
           /** The name of the database for WordPress */
-          define( 'DB_NAME', 'database_name_here' );
+          define( 'DB_NAME', 'wordpress' );
           
           /** MySQL database username */
-          define( 'DB_USER', 'username_here' );
+          define( 'DB_USER', 'wordpress' );
           
           /** MySQL database password */
-          define( 'DB_PASSWORD', 'password_here' );
+          define( 'DB_PASSWORD', 'wordpress' );
           
           /** MySQL hostname */
-          define( 'DB_HOST', 'localhost' );
+          define( 'DB_HOST', 'mysql' );
           
           /** Database Charset to use in creating database tables. */
           define( 'DB_CHARSET', 'utf8' );
@@ -215,7 +215,7 @@
                     subPath: 99-custom_overrides.ini
                   - mountPath: /var/www/html/wp-content/plugins
                     subPath: plugins
-                    name: wordpress-data                    
+                    name: ${APP_NAME}-data                    
             dnsPolicy: ClusterFirst
             restartPolicy: Always
             schedulerName: default-scheduler
@@ -235,9 +235,9 @@
                     - key: wp-config.php
                       path: wp-config.php               
                 name: ${APP_NAME}-config
-              - name: wordpress-data
+              - name: ${APP_NAME}-data
                 persistentVolumeClaim:
-                  claimName: wordpress-data                                            
+                  claimName: ${APP_NAME}-data                                            
         test: false
         triggers:
           - type: ConfigChange
@@ -285,7 +285,7 @@
             incremental: true
             from:
               kind: ImageStreamTag
-              name: wordpress-s2i-${IMAGE_SO}:latest
+              name: php-s2i:73-alpine
           type: Source
         successfulBuildsHistoryLimit: 5
         triggers:
@@ -293,7 +293,7 @@
           - imageChange:
               from:
                 kind: "ImageStreamTag"
-                name: "wordpress-s2i-${IMAGE_SO}:latest"
+                name: "php-s2i:73-alpine"
 
     - apiVersion: v1
       kind: ImageStream
@@ -302,6 +302,31 @@
           app: ${APP_NAME}-s2i
         name: ${APP_NAME}
       spec: {}
+
+
+    - apiVersion: v1
+      kind: ImageStream
+      metadata:
+          name: php-s2i
+      spec:
+          tags:
+            - name: '73-alpine'
+              from:
+                  kind: DockerImage
+                  name: mvilche/php-s2i:73-alpine      
+
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        finalizers:
+        - kubernetes.io/pvc-protection
+        name: ${APP_NAME}-data
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi      
 
 
 
@@ -343,54 +368,120 @@
 
 
 
+  ########## FIN php
+
+
+  ### COMIENZO mysql
     - apiVersion: v1
-      kind: BuildConfig
+      kind: DeploymentConfig
       metadata:
         labels:
           app: ${APP_NAME}-s2i
-          build: wordpress-s2i-${IMAGE_SO}
-        name: wordpress-s2i-${IMAGE_SO}
+        name: mysql
       spec:
-        failedBuildsHistoryLimit: 5
-        nodeSelector: null
-        output:
-          to:
-            kind: ImageStreamTag
-            name: 'wordpress-s2i-${IMAGE_SO}:latest'
-        postCommit: {}
-        resources:
-          requests:          
-            cpu: 100m
-            memory: 100Mi          
-          limits:
-            cpu: 500m
-            memory: 1024Mi
-        runPolicy: Serial
-        source:
-          contextDir: ${IMAGE_SO}
-          git:
-            ref: master
-            uri: 'https://github.com/mvilche/wordpress-s2i-openshift.git'
-          type: Git
+        replicas: 1
+        selector:
+          app: ${APP_NAME}-s2i
+          deploymentconfig: mysql
         strategy:
-          dockerStrategy:
-            dockerfilePath: Dockerfile
-          type: Docker
-        successfulBuildsHistoryLimit: 5
+          activeDeadlineSeconds: 21600
+          resources: {}
+          type: Recreate
+        template:
+          metadata:
+            labels:
+              app: ${APP_NAME}-s2i
+              deploymentconfig: mysql
+          spec:
+            containers:
+              - env:
+                  - name: MYSQL_ROOT_PASSWORD
+                    value: wordpress
+                  - name: MYSQL_USER
+                    value: wordpress
+                  - name: MYSQL_PASSWORD
+                    value: wordpress             
+                  - name: MYSQL_DATABASE
+                    value: wordpress
+                image: mysql:80
+                imagePullPolicy: Always
+                name: mysql
+                ports:
+                  - containerPort: 3306
+                    protocol: TCP
+                readinessProbe:
+                  exec:
+                    command:
+                    - /bin/sh
+                    - -i
+                    - -c
+                    - mysql -h 127.0.0.1 -u $MYSQL_USER -p$MYSQL_PASSWORD -D $MYSQL_DATABASE -e 'SELECT 1'
+                  failureThreshold: 3
+                  initialDelaySeconds: 60
+                  periodSeconds: 10
+                  successThreshold: 1
+                  timeoutSeconds: 1
+                resources:
+                  limits:
+                    memory: 512Mi
+                terminationMessagePath: /dev/termination-log
+                terminationMessagePolicy: File
+                volumeMounts:
+                  - mountPath: /var/lib/mysql/data
+                    name: mysql
+                    subPath: mysql
+            dnsPolicy: ClusterFirst
+            restartPolicy: Always
+            schedulerName: default-scheduler
+            securityContext: {}
+            terminationGracePeriodSeconds: 30
+            volumes:
+              - name: mysql
+                persistentVolumeClaim:
+                  claimName: ${APP_NAME}-data
+        test: false
         triggers:
           - type: ConfigChange
+          - imageChangeParams:
+              automatic: true
+              containerNames:
+                - mysql
+              from:
+                kind: ImageStreamTag
+                name: 'mysql:80'
+            type: ImageChange
+
+
+
+    - apiVersion: v1
+      kind: Service
+      metadata:
+        labels:
+          app: ${APP_NAME}-s2i
+        name: mysql
+      spec:
+        ports:
+          - name: tcp
+            port: 3306
+            protocol: TCP
+            targetPort: 3306
+        selector:
+          app: moodle
+          deploymentconfig: mysql
+        sessionAffinity: None
+        type: ClusterIP
 
 
     - apiVersion: v1
       kind: ImageStream
       metadata:
-        labels:
-          app: ${APP_NAME}-s2i
-        name: wordpress-s2i-${IMAGE_SO}
-      spec: {}
-
-
-  ########## FIN php
+          name: mysql
+      spec:
+          tags:
+            - name: '80'
+              from:
+                  kind: DockerImage
+                  name: centos/mysql-80-centos7
 
 
     ################PARAMETROS
@@ -401,15 +492,11 @@
         required: true
       - name: APP_REPO
         displayName: Wordpress repository
-        value: 'https://github.com/myuser/php-composer-sample-app.git'
+        value: 'https://github.com/WordPress/WordPress.git'
         required: true
       - name: APP_BRANCH
         displayName: Wordpress repository branch
         value: '5.4.1'
-        required: true
-      - name: IMAGE_SO
-        displayName: Image name distibution (alpine or centos)
-        value: 'alpine'
-        required: true          
+        required: true       
     ###############
 
